@@ -1,0 +1,8 @@
+{
+  "name": "VixSrc Repo",
+  "description": "VixSrc extension for CloudStream",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/USERNAME/REPO/builds/plugins.json"
+  ]
+}

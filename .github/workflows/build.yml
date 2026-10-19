@@ -1,0 +1,62 @@
+name: Build
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [master, main]
+    paths-ignore: ['*.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          path: src
+
+      # Checks out the "builds" branch, or creates it (empty) the first time.
+      - name: Prepare builds branch
+        run: |
+          git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" builds
+          cd builds
+          if git ls-remote --exit-code --heads origin builds >/dev/null 2>&1; then
+            git checkout builds
+          else
+            git checkout --orphan builds
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+          rm -f *.cs3
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build plugins
+        run: |
+          cd src
+          chmod +x gradlew
+          ./gradlew make makePluginsJson
+          find . -path '*/build/*.cs3' -exec cp {} ../builds/ \;
+          cp build/plugins.json ../builds/
+
+      - name: Push builds
+        run: |
+          cd builds
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add .
+          git commit -m "Build ${GITHUB_SHA}" || exit 0
+          git push --force origin builds
