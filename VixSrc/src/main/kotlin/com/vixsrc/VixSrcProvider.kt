@@ -170,6 +170,69 @@ class VixSrcProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val referer = "$mainUrl/"
+        val apiHeaders = mapOf(
+            "User-Agent" to UA,
+            "Referer" to referer,
+            "X-Requested-With" to "XMLHttpRequest"
+        )
+        var html: String? = null
+        try {
+            val apiUrl = data.replace("$mainUrl/", "$mainUrl/api/")
+            for (attempt in 0..1) {
+                val apiText = app.get(apiUrl, headers = apiHeaders).text
+                val src = jsonMapper.readTree(apiText)?.path("src")?.asText().orEmpty()
+                if (src.isBlank()) break
+                val r = app.get(fixUrl(src), headers = mapOf("User-Agent" to UA, "Referer" to referer))
+                if (r.code == 410) continue
+                html = r.text
+                break
+            }
+        } catch (e: Exception) {
+            html = null
+        }
+        if (html == null || !html.contains("masterPlaylist")) {
+            html = app.get(data, headers = mapOf("User-Agent" to UA, "Referer" to referer)).text
+        }
+        val m3u8 = extractPlaylist2(html) ?: return false
+        callback.invoke(
+            newExtractorLink(name, name, m3u8, ExtractorLinkType.M3U8) {
+                this.referer = referer
+                this.quality = Qualities.Unknown.value
+                this.headers = mapOf("User-Agent" to UA)
+            }
+        )
+        return true
+    }
+
+    private fun extractPlaylist2(html: String): String? {
+        val block = html.substringAfter("window.masterPlaylist", "")
+        if (block.isEmpty()) return null
+        var base = Regex("""url\s*:\s*['"]([^'"]+)['"]""").find(block)
+            ?.groupValues?.get(1)?.replace("\\/", "/") ?: return null
+        if (base.startsWith("/")) base = mainUrl + base
+        val paramsBlock = Regex("""params\s*:\s*\{([^}]*)\}""").find(block)
+            ?.groupValues?.get(1) ?: return null
+        val kv = Regex("""['"]([\w-]+)['"]\s*:\s*['"]([^'"]*)['"]""")
+            .findAll(paramsBlock).associate { it.groupValues[1] to it.groupValues[2] }
+        if (kv["token"].isNullOrBlank()) return null
+        val path = base.substringBefore("?").let { if (it.endsWith(".m3u8")) it else "$it.m3u8" }
+        val existing = base.substringAfter("?", "")
+        val fhd = Regex("""window\.canPlayFHD\s*=\s*true""").containsMatchIn(html)
+        val query = listOfNotNull(
+            existing.ifBlank { null },
+            kv.entries.joinToString("&") { "${it.key}=${it.value}" },
+            if (fhd) "h=1" else null
+        ).joinToString("&")
+        return "$path?$query"
+    }
+
+    suspend fun loadLinksLegacy(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val referer = "$mainUrl/"
         var html = app.get(data, headers = mapOf("User-Agent" to UA, "Referer" to referer)).text
 
         // Fallback: if the player script lives inside an iframe, follow it.
