@@ -4,7 +4,8 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.utils.AppUtils.parsedSafe
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.nicehttp.NiceResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
@@ -221,6 +222,7 @@ class VixSrcProvider : MainAPI() {
     }
 
     // ------------------------------------------------------------------ Helpers
+    private inline fun <reified T> NiceResponse.parsedSafe(): T? = tryParseJson<T>(this.text)
 
     private fun tmdbUrl(base: String, vararg extra: String): String {
         if (TMDB_API_KEY.startsWith("PUT_YOUR")) {
